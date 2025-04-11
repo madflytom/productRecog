@@ -65,6 +65,7 @@
 
       let found = false;
       let highestScore = 0;
+      let detectedClass = '';
 
       for (const pred of predictions) {
         const name = pred.class.toLowerCase();
@@ -79,12 +80,13 @@
 
           found = true;
           highestScore = score;
+          detectedClass = name;
           break; // only draw first relevant object
         }
       }
 
       statusEl.textContent = found
-        ? `✅ Detected object with ${Math.round(highestScore * 100)}% confidence. Move around the product.`
+        ? `✅ Detected: "${detectedClass}" with ${Math.round(highestScore * 100)}% confidence.`
         : '📷 No box shape found. Adjust camera angle or lighting.';
     }
 
