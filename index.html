@@ -34,9 +34,7 @@
     }
 
     function detectBoxWithOpenCV() {
-      const img = new Image();
-      img.src = canvas.toDataURL();
-      let src = cv.imread(img);
+      let src = cv.imread(canvas);
       let gray = new cv.Mat();
       let blur = new cv.Mat();
       let edges = new cv.Mat();
