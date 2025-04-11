@@ -53,10 +53,11 @@
 
     window.addEventListener('resize', resizeCanvas);
 
-    function detectBoxContours(imageData, width, height) {
+    function detectEdgesAndDrawBox(imageData, width, height) {
       const data = imageData.data;
-      const threshold = 100;
-      let rectangles = [];
+      const threshold = 15;
+      let minX = width, minY = height, maxX = 0, maxY = 0;
+      let found = false;
 
       for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
@@ -64,35 +65,43 @@
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
-          const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+          const gray = (r + g + b) / 3;
 
-          if (brightness < threshold) {
-            // Simulated edge box around this pixel for demonstration
-            rectangles.push({ x, y, w: 30, h: 30 });
-            x += 30; // skip forward to reduce overlap
+          const i2 = (y * width + (x + 1)) * 4;
+          const r2 = data[i2];
+          const g2 = data[i2 + 1];
+          const b2 = data[i2 + 2];
+          const gray2 = (r2 + g2 + b2) / 3;
+
+          const diff = Math.abs(gray - gray2);
+
+          if (diff > threshold) {
+            found = true;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
           }
         }
       }
 
-      return rectangles;
+      if (found) {
+        ctx.strokeStyle = 'lime';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+      }
+
+      return found;
     }
 
     function detectShapes() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const boxes = detectBoxContours(imageData, canvas.width, canvas.height);
-
-      ctx.strokeStyle = 'lime';
-      ctx.lineWidth = 2;
-      let found = boxes.length > 0;
-
-      boxes.forEach(box => {
-        ctx.strokeRect(box.x, box.y, box.w, box.h);
-      });
+      const found = detectEdgesAndDrawBox(imageData, canvas.width, canvas.height);
 
       statusEl.textContent = found
-        ? '✅ Box-like shapes detected. Slowly move around the product.'
-        : '📷 No box shapes found. Adjust camera angle or lighting.';
+        ? '✅ Box shape traced. Slowly move around the product.'
+        : '📷 No clear shape found. Adjust camera angle or lighting.';
     }
 
     async function startCamera() {
