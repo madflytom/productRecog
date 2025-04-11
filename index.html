@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Counterfeit Detection App</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    video, canvas { width: 100%; max-width: 400px; border: 1px solid #ccc; }
+    #status { margin-top: 10px; font-weight: bold; }
+    #startBtn { margin-top: 20px; padding: 10px 20px; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Scan Your Product</h1>
+  <video id="video" playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <p id="status">Tap start to begin scanning...</p>
+  <button id="startBtn">Start Camera</button>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
+  <script>
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext('2d');
+    let statusEl = document.getElementById('status');
+    let startBtn = document.getElementById('startBtn');
+    let cvReady = false;
+
+    function onOpenCvReady() {
+      cvReady = true;
+      console.log('OpenCV.js is ready.');
+    }
+
+    function detectBoxWithOpenCV() {
+      try {
+        let src = cv.imread(canvas);
+        let gray = new cv.Mat();
+        let blur = new cv.Mat();
+        let edges = new cv.Mat();
+        let contours = new cv.MatVector();
+        let hierarchy = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+        cv.Canny(blur, edges, 75, 200);
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let foundBox = false;
+        for (let i = 0; i < contours.size(); i++) {
+          let cnt = contours.get(i);
+          let approx = new cv.Mat();
+          cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+          if (approx.rows === 4 && cv.contourArea(approx) > 1000) {
+            foundBox = true;
+            approx.delete();
+            break;
+          }
+          approx.delete();
+        }
+
+        src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+        return foundBox;
+      } catch (err) {
+        console.error('OpenCV Error:', err);
+        return false;
+      }
+    }
+
+    async function processFrame() {
+      if (!video.videoWidth || !video.videoHeight || !cvReady) return;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const hasBox = detectBoxWithOpenCV();
+
+        if (!hasBox) {
+          statusEl.textContent = '📦 No rectangular shape detected. Move camera or adjust angle.';
+        } else {
+          statusEl.textContent = '✅ Box-like shape detected. Slowly rotate your phone...';
+        }
+      } catch (error) {
+        console.error('Detection error:', error);
+        statusEl.textContent = `Detection error: ${error.message || error}`;
+      }
+    }
+
+    async function startCamera() {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('getUserMedia not supported on this browser.');
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+
+        video.onloadedmetadata = () => {
+          video.play();
+          setInterval(processFrame, 2000);
+        };
+
+        statusEl.textContent = '📸 Point your camera at the product...';
+        startBtn.style.display = 'none';
+      } catch (err) {
+        console.error('Detailed error:', err);
+        statusEl.textContent = `Camera error: ${err.name} - ${err.message}`;
+      }
+    }
+
+    startBtn.addEventListener('click', () => {
+      startCamera();
+    });
+  </script>
+</body>
+</html>
