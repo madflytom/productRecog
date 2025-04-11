@@ -24,6 +24,7 @@
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
 
+    const visionModule = window.vision;
     let objectDetector;
 
     // Dummy embedding function (replace with actual model-based feature extraction)
@@ -47,40 +48,46 @@
     }
 
     async function processFrame() {
+      if (!video.videoWidth || !video.videoHeight) return;
+
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const imgTensor = tf.browser.fromPixels(imageData);
 
-      // Check for product shape using MediaPipe
-      const mpImage = new vision.ImageData(imageData);
-      const detections = await objectDetector.detect(mpImage);
-      const hasProduct = detections.detections && detections.detections.length > 0;
+      try {
+        const mpImage = new visionModule.ImageData(imageData);
+        const detections = await objectDetector.detect(mpImage);
+        const hasProduct = detections.detections && detections.detections.length > 0;
 
-      if (!hasProduct) {
-        statusEl.textContent = '🕵️ Product not detected, please adjust camera.';
-      } else {
-        const features = await extractFeatures(imgTensor);
-        const similarity = await compareEmbeddings(features, referenceEmbedding);
-
-        if (similarity < 3.0) {
-          statusEl.textContent = '✅ Product Verified';
+        if (!hasProduct) {
+          statusEl.textContent = '🕵️ Product not detected, please adjust camera.';
         } else {
-          statusEl.textContent = '❌ Product Mismatch';
-        }
+          const features = await extractFeatures(imgTensor);
+          const similarity = await compareEmbeddings(features, referenceEmbedding);
 
-        features.dispose();
+          if (similarity < 3.0) {
+            statusEl.textContent = '✅ Product Verified';
+          } else {
+            statusEl.textContent = '❌ Product Mismatch';
+          }
+
+          features.dispose();
+        }
+      } catch (error) {
+        console.error('MediaPipe detection error:', error);
+        statusEl.textContent = `MediaPipe detection error: ${error.message || error}`;
       }
 
       imgTensor.dispose();
     }
 
     async function createObjectDetector() {
-      const vision = await FilesetResolver.forVisionTasks(
+      const vision = await visionModule.FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
       );
-      objectDetector = await ObjectDetector.createFromOptions(vision, {
+      objectDetector = await visionModule.ObjectDetector.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/object_detector.task',
           delegate: 'GPU'
@@ -93,16 +100,22 @@
     async function startCamera() {
       try {
         await createObjectDetector();
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('getUserMedia not supported on this browser.');
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
+
         video.onloadedmetadata = () => {
           video.play();
           setInterval(processFrame, 2000);
         };
+
         statusEl.textContent = 'Point your camera at the product...';
       } catch (err) {
-        console.error('Error accessing camera:', err);
-        statusEl.textContent = 'Camera access denied or MediaPipe error.';
+        console.error('Detailed error:', err);
+        statusEl.textContent = `Error: ${err.message || err}`;
       }
     }
 
