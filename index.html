@@ -53,32 +53,46 @@
 
     window.addEventListener('resize', resizeCanvas);
 
-    function detectShapes() {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    function detectBoxContours(imageData, width, height) {
       const data = imageData.data;
+      const threshold = 100;
+      let rectangles = [];
 
-      // Very simple brightness thresholding and box approximation
-      ctx.strokeStyle = 'lime';
-      ctx.lineWidth = 2;
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const i = (y * width + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
 
-      let found = false;
-
-      for (let y = 0; y < canvas.height; y += 20) {
-        for (let x = 0; x < canvas.width; x += 20) {
-          const i = (y * canvas.width + x) * 4;
-          const r = data[i], g = data[i + 1], b = data[i + 2];
-          const brightness = (r + g + b) / 3;
-
-          if (brightness < 80) {
-            // Draw a box for demonstration (pretend this is a shape)
-            ctx.strokeRect(x - 10, y - 10, 20, 20);
-            found = true;
+          if (brightness < threshold) {
+            // Simulated edge box around this pixel for demonstration
+            rectangles.push({ x, y, w: 30, h: 30 });
+            x += 30; // skip forward to reduce overlap
           }
         }
       }
 
-      statusEl.textContent = found ? '✅ Possible shape(s) detected. Move around the product.' : '📷 No shape detected. Adjust angle or lighting.';
+      return rectangles;
+    }
+
+    function detectShapes() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const boxes = detectBoxContours(imageData, canvas.width, canvas.height);
+
+      ctx.strokeStyle = 'lime';
+      ctx.lineWidth = 2;
+      let found = boxes.length > 0;
+
+      boxes.forEach(box => {
+        ctx.strokeRect(box.x, box.y, box.w, box.h);
+      });
+
+      statusEl.textContent = found
+        ? '✅ Box-like shapes detected. Slowly move around the product.'
+        : '📷 No box shapes found. Adjust camera angle or lighting.';
     }
 
     async function startCamera() {
