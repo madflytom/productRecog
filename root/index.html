@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Counterfeit Detection App 2</title>
+  <title>Counterfeit Detection App</title>
   <style>
     body { font-family: sans-serif; text-align: center; }
     video, canvas { width: 100%; max-width: 400px; border: 1px solid #ccc; }
     #status { margin-top: 10px; font-weight: bold; }
+    #startBtn { margin-top: 20px; padding: 10px 20px; font-size: 1rem; }
   </style>
 </head>
 <body>
   <h1>Scan Your Product</h1>
-  <video id="video" autoplay playsinline></video>
+  <video id="video" playsinline muted></video>
   <canvas id="canvas" style="display: none;"></canvas>
-  <p id="status">Initializing...</p>
+  <p id="status">Tap start to begin scanning...</p>
+  <button id="startBtn">Start Camera</button>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
   <script>
@@ -22,6 +24,7 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
 
     // Dummy embedding function (replace with actual model-based feature extraction)
     async function extractFeatures(imageTensor) {
@@ -101,14 +104,17 @@
           setInterval(processFrame, 2000);
         };
 
-        statusEl.textContent = 'Point your camera at the product...';
+        statusEl.textContent = '📸 Point your camera at the product...';
+        startBtn.style.display = 'none';
       } catch (err) {
         console.error('Detailed error:', err);
-        statusEl.textContent = `Error: ${err.message || err}`;
+        statusEl.textContent = `Camera error: ${err.name} - ${err.message}`;
       }
     }
 
-    startCamera();
+    startBtn.addEventListener('click', () => {
+      startCamera();
+    });
   </script>
 </body>
 </html>
