@@ -34,38 +34,51 @@
     }
 
     function detectBoxWithOpenCV() {
-      try {
-        let src = cv.imread(canvas);
-        let gray = new cv.Mat();
-        let blur = new cv.Mat();
-        let edges = new cv.Mat();
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
+      let src = cv.imread(canvas);
+      let gray = new cv.Mat();
+      let blur = new cv.Mat();
+      let edges = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
 
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.Canny(blur, edges, 75, 200);
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+      cv.Canny(blur, edges, 75, 200);
+      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        let foundBox = false;
-        for (let i = 0; i < contours.size(); i++) {
-          let cnt = contours.get(i);
-          let approx = new cv.Mat();
-          cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
-          if (approx.rows === 4 && cv.contourArea(approx) > 1000) {
-            foundBox = true;
-            approx.delete();
-            break;
+      let foundBox = false;
+
+      for (let i = 0; i < contours.size(); i++) {
+        let cnt = contours.get(i);
+        let approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+        let area = cv.contourArea(approx);
+
+        if (approx.rows === 4 && area > 1000 && cv.isContourConvex(approx)) {
+          foundBox = true;
+
+          // Draw detected box in green
+          let color = new cv.Scalar(0, 255, 0);
+          let points = [];
+          for (let j = 0; j < 4; j++) {
+            points.push(new cv.Point(approx.data32S[j * 2], approx.data32S[j * 2 + 1]));
           }
-          approx.delete();
-        }
+          cv.line(src, points[0], points[1], color, 3);
+          cv.line(src, points[1], points[2], color, 3);
+          cv.line(src, points[2], points[3], color, 3);
+          cv.line(src, points[3], points[0], color, 3);
 
-        src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
-        return foundBox;
-      } catch (err) {
-        console.error('OpenCV Error:', err);
-        return false;
+          approx.delete();
+          cnt.delete();
+          break;
+        }
+        approx.delete();
+        cnt.delete();
       }
+
+      cv.imshow(canvas, src);
+      src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+      return foundBox;
     }
 
     async function processFrame() {
