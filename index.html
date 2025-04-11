@@ -44,7 +44,7 @@
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
     const startBtn = document.getElementById('startBtn');
-    let model, videoStream;
+    let model, videoStream, logoModel;
 
     const video = document.createElement('video');
     video.setAttribute('playsinline', true);
@@ -58,7 +58,7 @@
     window.addEventListener('resize', resizeCanvas);
 
     async function detect() {
-      if (!model || video.readyState !== 4) return;
+      if (!model || !logoModel || video.readyState !== 4) return;
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const predictions = await model.detect(canvas);
@@ -71,23 +71,37 @@
         const name = pred.class.toLowerCase();
         const score = pred.score;
 
-        // Filter by score and label
-        if (score > 0.6 && ["box", "book", "suitcase", "handbag", "backpack", "laptop", "tv"].some(label => name.includes(label))) {
+        if (score > 0.6 && name.includes("cup")) {
           const [x, y, w, h] = pred.bbox;
           ctx.strokeStyle = 'lime';
           ctx.lineWidth = 4;
           ctx.strokeRect(x, y, w, h);
 
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = 224;
+          tempCanvas.height = 224;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(canvas, x, y, w, h, 0, 0, 224, 224);
+
+          const imageTensor = tf.browser.fromPixels(tempCanvas).toFloat().div(255).expandDims();
+          const prediction = await logoModel.predict(imageTensor).data();
+
+          const logoConfidence = prediction[0];
+
+          if (logoConfidence > 0.7) {
+            statusEl.textContent = `✅ Coffee cup with logo detected (${(logoConfidence * 100).toFixed(1)}%)`;
+          } else {
+            statusEl.textContent = `☕ Coffee cup found, but logo not detected (${(logoConfidence * 100).toFixed(1)}%)`;
+          }
+
           found = true;
-          highestScore = score;
-          detectedClass = name;
-          break; // only draw first relevant object
+          break;
         }
       }
 
-      statusEl.textContent = found
-        ? `✅ Detected: "${detectedClass}" with ${Math.round(highestScore * 100)}% confidence.`
-        : '📷 No box shape found. Adjust camera angle or lighting.';
+      if (!found) {
+        statusEl.textContent = '📷 No coffee cup found. Adjust camera angle or lighting.';
+      }
     }
 
     async function startCamera() {
@@ -100,8 +114,9 @@
         video.onloadedmetadata = async () => {
           await video.play();
           model = await cocoSsd.load();
+          logoModel = await tf.loadLayersModel('./model.json');
 
-          statusEl.textContent = '📷 Model loaded. Scanning...';
+          statusEl.textContent = '📷 Models loaded. Scanning...';
 
           const runDetection = () => {
             detect();
