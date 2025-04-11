@@ -17,15 +17,11 @@
   <p id="status">Initializing...</p>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"></script>
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
-
-    const visionModule = window.vision;
-    let objectDetector;
 
     // Dummy embedding function (replace with actual model-based feature extraction)
     async function extractFeatures(imageTensor) {
@@ -47,6 +43,16 @@
       return distance.dataSync()[0];
     }
 
+    function detectBoxEdges(imageTensor) {
+      return tf.tidy(() => {
+        const gray = imageTensor.mean(2).toFloat().div(255);
+        const sobel = tf.image.sobelEdges(gray.expandDims(-1));
+        const magnitude = tf.sqrt(tf.add(tf.square(sobel.slice([0, 0, 0, 0], [-1, -1, -1, 1])), sobel.slice([0, 0, 0, 1], [-1, -1, -1, 1])));
+        const meanMag = magnitude.mean().dataSync()[0];
+        return meanMag > 0.1; // crude edge detection threshold
+      });
+    }
+
     async function processFrame() {
       if (!video.videoWidth || !video.videoHeight) return;
 
@@ -57,49 +63,32 @@
       const imgTensor = tf.browser.fromPixels(imageData);
 
       try {
-        const mpImage = new visionModule.ImageData(imageData);
-        const detections = await objectDetector.detect(mpImage);
-        const hasProduct = detections.detections && detections.detections.length > 0;
+        const hasBoxEdges = detectBoxEdges(imgTensor);
 
-        if (!hasProduct) {
-          statusEl.textContent = '🕵️ Product not detected, please adjust camera.';
+        if (!hasBoxEdges) {
+          statusEl.textContent = '📦 No boxy shapes detected. Move camera closer or adjust angle.';
         } else {
           const features = await extractFeatures(imgTensor);
           const similarity = await compareEmbeddings(features, referenceEmbedding);
 
           if (similarity < 3.0) {
-            statusEl.textContent = '✅ Product Verified';
+            statusEl.textContent = '✅ Product Verified. Slowly rotate your phone around the box...';
           } else {
-            statusEl.textContent = '❌ Product Mismatch';
+            statusEl.textContent = '⚠️ Shape found, but product mismatch. Try another angle.';
           }
 
           features.dispose();
         }
       } catch (error) {
-        console.error('MediaPipe detection error:', error);
-        statusEl.textContent = `MediaPipe detection error: ${error.message || error}`;
+        console.error('Detection error:', error);
+        statusEl.textContent = `Detection error: ${error.message || error}`;
       }
 
       imgTensor.dispose();
     }
 
-    async function createObjectDetector() {
-      const vision = await visionModule.FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
-      );
-      objectDetector = await visionModule.ObjectDetector.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/object_detector.task',
-          delegate: 'GPU'
-        },
-        scoreThreshold: 0.5,
-        runningMode: 'IMAGE'
-      });
-    }
-
     async function startCamera() {
       try {
-        await createObjectDetector();
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error('getUserMedia not supported on this browser.');
         }
