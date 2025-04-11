@@ -59,24 +59,32 @@
 
     async function detect() {
       if (!model || video.readyState !== 4) return;
+
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const predictions = await model.detect(canvas);
 
       let found = false;
+      let highestScore = 0;
+
       for (const pred of predictions) {
         const name = pred.class.toLowerCase();
-        if (["box", "book", "suitcase", "handbag"].some(label => name.includes(label))) {
+        const score = pred.score;
+
+        // Filter by score and label
+        if (score > 0.6 && ["box", "book", "suitcase", "handbag", "backpack", "laptop", "tv"].some(label => name.includes(label))) {
           const [x, y, w, h] = pred.bbox;
           ctx.strokeStyle = 'lime';
           ctx.lineWidth = 4;
           ctx.strokeRect(x, y, w, h);
+
           found = true;
+          highestScore = score;
           break; // only draw first relevant object
         }
       }
 
       statusEl.textContent = found
-        ? '✅ Product-like object detected. Move around the product.'
+        ? `✅ Detected object with ${Math.round(highestScore * 100)}% confidence. Move around the product.`
         : '📷 No box shape found. Adjust camera angle or lighting.';
     }
 
@@ -90,6 +98,9 @@
         video.onloadedmetadata = async () => {
           await video.play();
           model = await cocoSsd.load();
+
+          statusEl.textContent = '📷 Model loaded. Scanning...';
+
           const runDetection = () => {
             detect();
             requestAnimationFrame(runDetection);
@@ -98,7 +109,6 @@
         };
 
         startBtn.style.display = 'none';
-        statusEl.textContent = '📷 Loading model and starting camera...';
       } catch (err) {
         console.error('Camera error:', err);
         statusEl.textContent = `Camera error: ${err.name} - ${err.message}`;
