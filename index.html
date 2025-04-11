@@ -18,81 +18,53 @@
   <p id="status">Tap start to begin scanning...</p>
   <button id="startBtn">Start Camera</button>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
   <script>
     let video = document.getElementById('video');
     let canvas = document.getElementById('canvas');
     let ctx = canvas.getContext('2d');
     let statusEl = document.getElementById('status');
     let startBtn = document.getElementById('startBtn');
-    let cvReady = false;
 
-    function onOpenCvReady() {
-      cvReady = true;
-      console.log('OpenCV.js is ready.');
-    }
+    function detectEdges() {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
 
-    function detectBoxWithOpenCV() {
-      let src = cv.imread(canvas);
-      let gray = new cv.Mat();
-      let blur = new cv.Mat();
-      let edges = new cv.Mat();
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
+      let totalEdgeMagnitude = 0;
+      for (let y = 1; y < canvas.height - 1; y++) {
+        for (let x = 1; x < canvas.width - 1; x++) {
+          const i = (y * canvas.width + x) * 4;
+          const prevX = ((y * canvas.width + (x - 1)) * 4);
+          const prevY = (((y - 1) * canvas.width + x) * 4);
 
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-      cv.Canny(blur, edges, 75, 200);
-      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+          const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
+          const grayX = data[prevX] * 0.3 + data[prevX + 1] * 0.59 + data[prevX + 2] * 0.11;
+          const grayY = data[prevY] * 0.3 + data[prevY + 1] * 0.59 + data[prevY + 2] * 0.11;
 
-      let foundBox = false;
+          const dx = gray - grayX;
+          const dy = gray - grayY;
 
-      for (let i = 0; i < contours.size(); i++) {
-        let cnt = contours.get(i);
-        let approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
-        let area = cv.contourArea(approx);
-
-        if (approx.rows === 4 && area > 1000 && cv.isContourConvex(approx)) {
-          foundBox = true;
-
-          let color = new cv.Scalar(0, 255, 0);
-          let points = [];
-          for (let j = 0; j < 4; j++) {
-            points.push(new cv.Point(approx.data32S[j * 2], approx.data32S[j * 2 + 1]));
-          }
-          for (let j = 0; j < 4; j++) {
-            cv.line(src, points[j], points[(j + 1) % 4], color, 3);
-          }
-
-          approx.delete();
-          cnt.delete();
-          break;
+          totalEdgeMagnitude += Math.abs(dx) + Math.abs(dy);
         }
-        approx.delete();
-        cnt.delete();
       }
 
-      cv.imshow(canvas, src);
-      src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
-      return foundBox;
+      const edgeDensity = totalEdgeMagnitude / (canvas.width * canvas.height);
+      return edgeDensity;
     }
 
     async function processFrame() {
-      if (!video.videoWidth || !video.videoHeight || !cvReady) return;
+      if (!video.videoWidth || !video.videoHeight) return;
 
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
 
       try {
-        const hasBox = detectBoxWithOpenCV();
+        const edgeDensity = detectEdges();
 
-        if (!hasBox) {
-          statusEl.textContent = '📦 No rectangular shape detected. Move camera or adjust angle.';
-        } else {
+        if (edgeDensity > 20) {
           statusEl.textContent = '✅ Box-like shape detected. Slowly rotate your phone...';
+        } else {
+          statusEl.textContent = '📦 No clear shape detected. Move camera or adjust lighting.';
         }
       } catch (error) {
         console.error('Detection error:', error);
